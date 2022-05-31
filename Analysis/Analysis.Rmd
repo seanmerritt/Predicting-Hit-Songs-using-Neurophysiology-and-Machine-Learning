@@ -1,0 +1,851 @@
+---
+title: "Analysis"
+author: "Sean Merritt"
+date: "2/11/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+knitr::opts_chunk$set
+pacman::p_load(tidyverse, readxl, moments, SuperLearner, synthpop, caret, RColorBrewer )
+```
+
+We define a breakout song as those that had more than 700,000 listens on Pandora. We removed observations where the participant had heard the song previously and then aggregated the Immersion, Frustration, and Peak across participants to give the songs scores (N = 24). 
+
+```{r include=FALSE}
+
+### Prepping Data 
+
+Song_Study <- read_excel("Song Study.xlsx", 
+                         sheet = "Sheet9")
+
+Song <- read_excel("Song Study.xlsx", 
+                         sheet = "Phys Data by Song") %>% 
+  select(Song, `Station Owners`, `Thumbs Up YTD`, SongPlays, `Number of Days out since release`)
+
+dat <- read_excel("Cleaned Data By Previously Heard.xlsx", sheet = "Not Heard Before") %>% 
+  select(Song, Invangelist)
+
+data <- Song_Study %>% 
+  filter(Previous == 0) %>%
+  rename(Song = 'SongNumber') %>% 
+  mutate(Breakout = ifelse(Song %in% c("4. Tonnes and I, Dance Monkey",
+                                             "18. Gabby Barrett, The Good Ones",
+                                             "3. Doja Cat, Like That",
+                                             "8. Arizona Zervas, Roxanne",
+                                             "22. Fire From the Gods, Right Now",
+                                             "1. Yemi Alade, Shake",
+                                             "11. Mahalia, What You Did",
+                                             "13. Lil That, F.N",
+                                             "14. Ali Gatie, It's You",
+                                             "15. Tyla Yaweh, I Think I love Her",
+                                             "5. Layton Green, Lil Baby, and City Girls, Leave Em Alone",
+                                             "6. Isabella Merced, Papi",
+                                             "9. Koffee, Rapture"
+                                             
+                                             ), 1, 0
+                           )
+         ) %>% 
+  left_join(dat, by = "Song")
+datagg <- data %>% 
+  group_by(Song) %>% 
+  summarize(Breakout = mean(Breakout),
+            Immersion = mean(Immersion, na.rm = T),
+            Peak = mean(Peak, na.rm = T),
+            Frustration = mean(Frustration, na.rm = T),
+            Invangelist = mean(Invangelist, na.rm =T),
+            Replay = mean(Replay, na.rm =T),
+            Reccomend = mean(Reccomend, na.rm =T),
+            Offensive = mean(Offensive, na.rm =T),
+            Correct = mean(CorrectLyric, na.rm = T),
+            Score = mean(Score, na.rm = T)) %>% 
+  left_join(Song, by = "Song")
+
+write.csv(datagg, "aggregatedSongs.csv")
+
+previous <- Song_Study %>% 
+  #filter(Previous == 1) %>%
+  rename(Song = 'SongNumber') %>% 
+  mutate(Breakout = ifelse(Song %in% c("4. Tonnes and I, Dance Monkey",
+                                             "18. Gabby Barrett, The Good Ones",
+                                             "3. Doja Cat, Like That",
+                                             "8. Arizona Zervas, Roxanne",
+                                             "22. Fire From the Gods, Right Now",
+                                             "1. Yemi Alade, Shake",
+                                             "11. Mahalia, What You Did",
+                                             "13. Lil That, F.N",
+                                             "14. Ali Gatie, It's You",
+                                             "15. Tyla Yaweh, I Think I love Her",
+                                             "5. Layton Green, Lil Baby, and City Girls, Leave Em Alone",
+                                             "6. Isabella Merced, Papi",
+                                             "9. Koffee, Rapture"
+                                             
+                                             ), 1, 0
+                           )
+         )  %>% 
+  group_by(Song) %>% 
+  summarize(Breakout = mean(Breakout),
+            I_sd = sd(Immersion, na.rm = T),
+            I_sk = skewness(Immersion, na.rm = T),
+            I_kt = kurtosis(Immersion, na.rm = T),
+            Immersion = mean(Immersion, na.rm = T),
+            Peak = mean(Peak, na.rm = T),
+            Frustration = mean(Frustration, na.rm = T),
+            Replay = mean(Replay, na.rm =T),
+            Reccomend = mean(Reccomend, na.rm =T),
+            Offensive = mean(Offensive, na.rm =T),
+            Correct = mean(CorrectLyric, na.rm = T),
+            Score = mean(Score, na.rm = T),
+            Previous = mean(Previous, na.rm = T)) %>% 
+  left_join(Song, by = "Song")
+```
+
+```{r}
+previous %>% 
+  select(SongPlays, `Station Owners`, `Thumbs Up YTD`, Score) %>% 
+  jmv::corrMatrix() 
+
+summary(lm(SongPlays ~ Score + Previous, previous))
+previous %>% 
+  jmv::linReg(dep = SongPlays, covs = vars(Score, Previous), blocks = list(list('Score', 'Previous')), stdEst = T)
+
+```
+
+First we conducted an independent t-test to compare breakout (n = 13) and non-breakout (n = 11) songs on immersion. We found that the difference between breakout and non-breakout songs to be significant, *t*(22) = -2.34, *p* = .028, *coven's d* = -.95. Breakout songs were found to be have a higher average immersion score than non-breakout songs.
+
+```{r}
+## Flop V Hit on Immersion
+
+datagg %>% 
+  jmv::ttestIS(vars = Immersion, group = Breakout, effectSize = T)
+
+### Graph
+datagg %>%
+  mutate(Breakout = ifelse(Breakout == 1, "Hit", "Flop")) %>% 
+  group_by(Breakout) %>% 
+  summarize( SE =  2*sd(Immersion), Immersion = mean(Immersion)) %>% 
+  ggplot(aes(x = Breakout, y = Immersion))+
+  geom_bar(stat = "identity", position = "dodge", width = .5, fill = "darkcyan")+
+  geom_errorbar(aes(ymin = (Immersion - SE), 
+                    ymax = (Immersion + SE)), 
+                    colour="black",
+                    width =.25,
+                    alpha=0.9, 
+                    size=1,
+                    #position = position_dodge(0.8)
+                    )+
+  #scale_y_continuous(breaks = seq(0,4.5,by =.1))+
+  #slim(0,4.2)+
+  scale_fill_brewer(palette = "Dark2")+
+  theme_classic()+
+  labs(x ="")
+
+ggsave("flop_v_hit.jpeg", width = 4, height = 4)
+```
+
+
+```{r}
+## Hit V Flop on Other Variables
+datagg %>% 
+  jmv::ttestIS(vars = Score, group = Breakout, effectSize = T)
+
+datagg %>% 
+  jmv::ttestIS(vars = Replay, group = Breakout, effectSize = T)
+
+
+datagg %>% 
+  jmv::ttestIS(vars = Offensive, group = Breakout, effectSize = T)
+
+
+datagg %>% 
+    jmv::ttestIS(vars = Correct, group = Breakout, effectSize = T)
+
+
+datagg %>% 
+    jmv::ttestIS(vars = Reccomend, group = Breakout, effectSize = T)
+
+datagg %>% 
+    jmv::ttestIS(vars = Immersion, group = Breakout, effectSize = T, ci = T, ciWidth = 95, meanDiff = T)
+datagg %>% 
+    jmv::ttestIS(vars = Peak, group = Breakout, effectSize = T) 
+datagg %>% 
+  jmv::ttestIS(vars = `Station Owners`, group = Breakout)
+datagg %>% 
+  jmv::ttestIS(vars = `Thumbs Up YTD`, group = Breakout)
+datagg %>% 
+  jmv::ttestIS(vars = `Thumbs Up YTD`, group = Breakout)
+datagg %>% 
+  jmv::ttestIS(vars = `Number of Days out since release`, group = Breakout)
+```
+
+
+```{r}
+## relationship among other variables
+datagg %>% 
+  select( `Station Owners`, `Thumbs Up YTD`, `SongPlays`, Immersion, Frustration, Peak) %>% 
+  jmv::corrMatrix()
+
+par <- data %>% 
+  mutate(Gender = ifelse(BioSex == "M", 1,0)) %>% 
+  group_by(Song, ID) %>%
+  summarize(Breakout = mean(Breakout),
+            Immersion = mean(Immersion, na.rm = T),
+            Peak = mean(Peak, na.rm = T),
+            Frustration = mean(Frustration, na.rm = T),
+            Age = mean(Age, na.rm = T),
+            Gender = mean(Gender, na.rm = T),  .groups = "drop",)
+
+  par %>% 
+  select(Immersion, Frustration, Peak, Age, Gender) %>% 
+  jmv::corrMatrix()
+  
+par %>% 
+  group_by(Gender) %>% 
+  summarize(MEAN = mean(Immersion, na.rm = T))
+  
+  par %>% 
+    jmv::ttestIS(vars = Immersion, group = Gender, effectSize = T)
+ 
+datagg %>% 
+  select(Breakout, Immersion, Frustration, Peak, Invangelist) %>% 
+  jmv::corrMatrix()
+```
+
+
+
+
+```{r}
+## Predicting Hit songs up with immersion data
+datagg %>% 
+  jmv::linReg(dep = Breakout,
+                 covs = vars(Immersion, Frustration, Offensive),
+                 blocks = list( list( 'Immersion'), #list( "Offensive"),
+                   list("Frustration")),
+                 #refLexes = list(list(var = "Breakout", ref = "0" )), 
+                 #acc = T,
+                 #class = T,
+                 modelTest = T, 
+                 #OR =T, 
+                 collin = T,
+```
+
+```{r}
+## Predicting thumbs up with immersion data
+datagg %>% 
+  jmv::linReg(dep = `Thumbs Up YTD` ,
+                 covs = vars(Immersion, Frustration, Offensive),
+                 blocks = list( list( 'Immersion'), #list( "Offensive"),
+                   list("Frustration")),
+                 #refLevels = list(list(var = "Breakout", ref = "0" )), 
+                 #acc = T,
+                 #class = T,
+                 modelTest = T, 
+                 #OR =T, 
+                 collin = T,
+              stdEst = T)
+```
+
+To improve our predictive accuracy, we trained a bagged machine learning model. We started by created a synthetic data set using the `synthpop` package in R with a final sample of 10,000. Synthetic sampling uses the relationship between variables to recreate data that is similar to the observed set (**Reference here**). We used the following variables to create the data set: breakout, immersion, peak, frustation, and invangelist.   
+
+```{r}
+## Creating the synthetic data
+dat_show_syn <- syn(datagg[c(2:6)], m =1, seed = 1, k = 10000, minnumlevels = 2)
+dat_show_s <- dat_show_syn$syn
+write.csv(dat_show_s, 'synthetic_data.csv')
+```
+We then used half of the sythetic data to train our bagged model and the other half to test it. Bagged models (also known as ensemble models) take the average accross a group of models to make predictions. This can often improve the accuracy of prediction above a single machine learning model. Using the `Superlearner` package in R makes it easy to create ensembles models and recieve output as to the the contribution of each algorithm. We used a logistic regression, k-nearest neighbor, and neural networks as part of our ensemble. We used frustration and immersion as our predictor variables in the model. 
+
+
+```{r}
+## Grapphical comparisons of the data
+
+datagg <- datagg %>% rename(Retreat = 'Frustration')
+
+dat_show_s <- dat_show_s %>% rename(Retreat = 'Frustration')
+
+datagg %>% 
+  ggplot(aes(x = Retreat, ..scaled..))+
+  geom_density()+
+  geom_density(data = dat_show_s, aes(x = Retreat, ..scaled..), color = "Red")+
+  theme_classic()+
+  labs(y = "Density")
+ggsave("Synth_v_norm_Retreat.jpeg")
+
+datagg %>% 
+  ggplot(aes(x = Peak, ..scaled..))+
+  geom_density()+
+  geom_density(data = dat_show_s, aes(x = Peak, ..scaled..), color = "Red")+
+  theme_classic()+
+  labs(y = "Density")
+ggsave("Synth_v_norm_Peak.jpeg")
+
+datagg %>% 
+  ggplot(aes(x = Immersion,..scaled..))+
+  geom_density()+
+  geom_density(data = dat_show_s, aes(x = Immersion, ..scaled..), color = "Red")+
+  theme_classic()+
+  labs(y = "Density")
+ggsave("Synth_v_norm_immersion.jpeg")
+
+
+obs <- datagg %>% 
+  select(Breakout, Immersion, Peak, Retreat, Invangelist) %>% 
+    mutate(Breakout = ifelse(Breakout ==1, "Hit", "Miss"),
+           DataSet = "Observed") 
+
+full <- dat_show_s %>% 
+  mutate(Breakout = ifelse(Breakout ==1, "Hit", "Miss"),
+         DataSet = "Synthetic") %>% 
+  rbind(obs)  %>% 
+  group_by(Breakout, DataSet) %>% 
+  summarize(Immersion_se = sd(Immersion)/sqrt(n()), Peak_se = sd(Peak)/sqrt(n()), Retreat_se = sd(Retreat)/sqrt(n()), Immersion = mean(Immersion), Peak = mean(Peak), Retreat = mean(Retreat))
+
+full %>% 
+  ggplot(aes(x = Breakout, y = Retreat, color = DataSet))+
+  geom_point(position=position_dodge(.3))+
+  geom_errorbar(aes(ymin = Retreat - Retreat_se, ymax = Retreat + Retreat_se), 
+                width = .2, 
+                  position=position_dodge(.3))+
+  theme_classic()+
+  labs(fill ="", x = "")+
+  theme(legend.position = "bottom")
+
+ggsave("HitVMissRetreate.jpeg")
+
+full %>% 
+  ggplot(aes(x = Breakout, y = Immersion, color = DataSet))+
+  geom_point(position=position_dodge(.3))+
+  geom_errorbar(aes(ymin = Immersion - Immersion_se, ymax = Immersion + Immersion_se), 
+                width = .2, 
+                  position=position_dodge(.3))+
+  theme_classic()+
+  labs(fill ="", x = "")+
+  theme(legend.position = "bottom")
+
+ggsave("HitVMissImmersion.jpeg")
+
+full %>% 
+  ggplot(aes(x = Breakout, y = Peak, color = DataSet))+
+  geom_point(position=position_dodge(.3))+
+  geom_errorbar(aes(ymin = Peak - Peak_se, ymax = Peak + Peak_se), 
+                width = .2, 
+                  position=position_dodge(.3))+
+  theme_classic()+
+  labs(fill ="", x = "")+
+  theme(legend.position = "bottom")
+
+ggsave("HitVMissPeak.jpeg")
+
+library(RColorBrewer)
+full %>% 
+ggplot(aes(x = DataSet, y = Immersion, color = Breakout)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA, aes(fill = Breakout)) + 
+  geom_boxplot(
+    width = .25, 
+    outlier.shape = NA
+  ) +
+  geom_point(
+    size = 1.3,
+    alpha = .3,
+    position = position_jitter(
+      seed = 1, width = .1
+    )
+  ) + 
+  coord_cartesian(xlim = c(1.2, NA), clip = "off")+
+  coord_flip()+
+  theme_classic()+
+  labs(color ="", fill = "", x = "")+
+  theme(legend.position = "bottom")+
+  scale_color_brewer(palette = "Set2")+
+  scale_fill_brewer(palette = "Set2")
+ggsave("ImmersionRainPlot.jpeg")
+
+full %>% 
+ggplot(aes(x = DataSet, y = Retreat, color = Breakout)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA, aes(fill = Breakout)) + 
+  geom_boxplot(
+    width = .25, 
+    outlier.shape = NA
+  ) +
+  geom_point(
+    size = 1.3,
+    alpha = .3,
+    position = position_jitter(
+      seed = 1, width = .1
+    )
+  ) + 
+  coord_cartesian(xlim = c(1.2, NA), clip = "off")+
+  coord_flip()+
+  theme_classic()+
+  labs(color ="", fill = "", x = "")+
+  theme(legend.position = "bottom")+
+  scale_color_brewer(palette = "Set2")+
+  scale_fill_brewer(palette = "Set2")
+ggsave("RetreatRainPlot.jpeg")
+full %>% 
+ggplot(aes(x = DataSet, y = Peak, color = Breakout)) + 
+  ggdist::stat_halfeye(
+    adjust = .5, 
+    width = .6, 
+    .width = 0, 
+    justification = -.3, 
+    point_colour = NA, aes(fill = Breakout)) + 
+  geom_boxplot(
+    width = .25, 
+    outlier.shape = NA
+  ) +
+  geom_point(
+    size = 1.3,
+    alpha = .3,
+    position = position_jitter(
+      seed = 1, width = .1
+    )
+  ) + 
+  coord_cartesian(xlim = c(1.2, NA), clip = "off")+
+  coord_flip()+
+  theme_classic()+
+  labs(color ="", fill = "", x = "")+
+  theme(legend.position = "bottom")+
+  scale_color_brewer(palette = "Set2")+
+  scale_fill_brewer(palette = "Set2")
+ggsave("PeakRainPlot.jpeg")
+```
+
+```{r}
+## Statistical comparisons of observed vs synthetic
+datagg%>% 
+  select(Breakout, Immersion,  Peak,Frustration) %>% 
+  jmv::descriptives(sd = T, splitBy = Breakout)
+
+dat_show_s %>%
+  select(-Invangelist) %>% 
+  mutate(Breakout = as.numeric(Breakout)-1) %>% 
+  jmv::descriptives(sd = T)
+
+datagg %>% 
+  select(Breakout, Immersion,  Peak,Retreat) %>% 
+    jmv::corrMatrix()
+dat_show_s %>% 
+  select(-Invangelist) %>% 
+  mutate(Breakout = as.double(Breakout)) %>% 
+  jmv::corrMatrix()
+
+t.test(datagg$Breakout, as.numeric(dat_show_s$Breakout)-1)
+t.test(datagg$Immersion, dat_show_s$Immersion)
+t.test(datagg$Frustration, dat_show_s$Frustration)
+t.test(datagg$Peak, dat_show_s$Peak)
+
+dat_show_s$data <- "Synthetic"
+
+data <- datagg %>% 
+    select(Breakout, Immersion,  Peak,Frustration, Invangelist) %>% 
+  mutate(data = "observed") %>% 
+  rbind(dat_show_s) %>% 
+  mutate(Breakout = as.numeric(Breakout)-1)
+  
+  
+var.test(Breakout ~ data, data, 
+         alternative = "two.sided")
+var.test(Immersion ~ data, data, 
+         alternative = "two.sided")
+var.test(Peak ~ data, data, 
+         alternative = "two.sided")
+var.test(Frustration ~ data, data, 
+         alternative = "two.sided")
+
+cocor::cocor.indep.groups(.44,.44,24,10000)
+cocor::cocor.indep.groups(.03,-0.2,24,10000)
+cocor::cocor.indep.groups(-.39,-.11,24,10000)
+cocor::cocor.indep.groups(-.11,-.01,24,10000)
+cocor::cocor.indep.groups(-.51,-.37,24,10000)
+cocor::cocor.indep.groups(-.18,-.23,24,10000)
+```
+
+
+```{r}  
+set.seed(2)
+train <- sample(1:nrow(dat_show_s), nrow(dat_show_s)*.5)
+Train_show <- dat_show_s[train,]
+test_show <- dat_show_s[-train ,]
+```
+```{r}
+Train_show %>% jmv::descriptives()
+test_show %>%  jmv::descriptives()
+```
+
+```{r}
+base_preds <- test_show %>% 
+  mutate(predict = ifelse(TRUE, 1,0))
+
+y_base <- base_preds$predict
+```
+```{r}
+base_preds2 <- Train_show %>% 
+  mutate(predict = ifelse(Immersion > 4.16, 1,0),
+         predict = ifelse(predict == 0 & Frustration < 1.45,1,0))
+
+y_base2 <- base_preds2$predict
+```
+
+```{r}
+y_show <- as.numeric(as.factor(Train_show$Breakout))-1
+y.test_show <- as.matrix(as.numeric(as.factor(test_show$Breakout))-1)
+x_show <- as.data.frame(Train_show[,c(2,4)])
+x.test_show <- as.data.frame(test_show[,c(2,4)])
+```
+
+
+```{r}
+# Create the confusion matrix
+#cm <- confusionMatrix(as.factor(y_base), as.factor(y.test_show))
+sum(y_base2 == y.test_show)/5000
+```
+
+```{r}
+datagg %>% 
+  mutate(y_pred = 1,
+         y_pred2 = ifelse(Immersion > 4.13,1,0),
+         hit1 = ifelse(y_pred == Breakout,1,0),
+         hit2 = ifelse(y_pred2 == Breakout,1,0)) %>% 
+  summarize(Acc1 = sum(hit1)/n(), Acc2 = sum(hit2)/n())
+```
+
+```{r}
+## Tuning the separate models
+glm_leaner <- create.Learner("SL.glm", tune = list(C = c(1,10,100)))
+nnet_learner <- create.Learner("SL.nnet", tune = list(softmax = c(TRUE, FALSE), decay = c(0,1,10), size = c(10)))
+knn_learner <- create.Learner("SL.knn", tune = list(k = c(3,5,8,10)))
+svm <- create.Learner("SL.ksvm", tune= (list(C = c(10,100), kernal = c("polydot", "tanhdot"))))
+```
+
+```{r}
+cv_sl = CV.SuperLearner(Y = y_show, X = x_show, family = binomial(), cvControl = list(V = 5),
+                        SL.library = c(nnet_learner$names ))
+
+# Review results.
+summary(cv_sl)
+```
+logit: C = 1
+nnet: softmax = T, decay = 10, size = 10
+knn: k = 3
+ksvm: "tahndot", c = 10
+
+```{r}
+SL.ksvmtahn <- function(...){
+  SL.ksvm(...,kernal = "tanhdot")
+}
+SL.knn3 <- function(...){
+  SL.knn(...,k = 5)
+}
+SL.nn <- function(...){
+  SL.nnet(...,softmax = T, decay = 10, size = 10)
+}
+
+nnet_learner <- create.Learner("SL.nn")
+knn_learner <- create.Learner("SL.knn3")
+svm_learner <- create.Learner("SL.ksvmtahn")
+```
+
+```{r}
+model <- SuperLearner(y_show,
+                      x_show,
+                      family=binomial(),
+                      SL.library=list("SL.glm", 
+                                      nnet_learner$names, 
+                                      knn_learner$names,
+                                      svm_learner$names)
+                      )
+
+## with SL.ksvm we can still get about 87%
+model
+```
+
+```{r}
+model <- SuperLearner(y_show,
+                      x_show,
+                      family=binomial(),
+                      SL.library=list("SL.glm", 
+                                      "SL.nnet", 
+                                      "SL.ksvm",
+                                      "SL.knn")
+                      )
+
+## with SL.ksvm we can still get about 87%
+model
+```
+
+  
+
+```{r}
+# Training the bagged model
+predictions_show <- predict.SuperLearner(model, newdata = x_show, X = x_show, Y = y_show)
+
+conv.preds_show <- (ifelse(predictions_show$pred>=0.5,1,0))
+
+# Create the confusion matrix
+cm <- confusionMatrix(as.factor(conv.preds_show), as.factor(y_show))
+cm
+```
+
+```{r}
+## Testing the bagged model
+predictions_show <- predict.SuperLearner(model, newdata = x.test_show, X = x_show, Y = y_show)
+
+conv.preds_show <- (ifelse(predictions_show$pred>=0.5,1,0))
+
+# Create the confusion matrix
+cm <- confusionMatrix(as.factor(conv.preds_show), as.factor(y.test_show))
+cm
+mcnemar.test(cm$table)
+
+
+t <- data.frame(value = c(.96498,.9647,.9744))
+jmv::ttestOneS(t, value, testValue = .54)
+```
+
+We then tested the model on the original data set. With a total accuracy of 95% (*p* < .001), we were able to correctly classifed every breakout song and misclassified only one non-breakout song. 
+
+```{r}
+## Testing on the observed data
+x_final <- as.data.frame(datagg[,c(3,5)])
+y_final <- as.matrix(as.numeric(as.factor(datagg$Breakout))-1)
+
+predictions_show <- predict.SuperLearner(model, newdata = x_final, X = x_show, Y = y_show, onlySL = F)
+
+conv.preds_show <- (ifelse(predictions_show$pred>=0.5,1,0))
+
+# Create the confusion matrix
+cm <- confusionMatrix(as.factor(conv.preds_show), as.factor(y_final))
+cm
+mcnemar.test(cm$table)
+t <- data.frame(value = c(.788,.9583,.9989))
+jmv::ttestOneS(t, value, testValue = .54)
+```
+
+```{r}
+## Cross validating to examin results
+set.seed(1)
+iterations = 10
+cross_validated_output = matrix(ncol = 4, nrow = iterations)
+j = 1
+for (k in 1:iterations){
+  num = k * 1000
+  train = dat_show_s[-c(j:num),]
+  test = dat_show_s[c(j:num),]
+  y_show <- as.numeric(as.factor(train$Breakout))-1
+  y_final <- as.matrix(as.numeric(as.factor(test$Breakout))-1)
+  x_show <- as.data.frame(train[,c(2,4)])
+  x_final <- as.data.frame(test[,c(2,4)])
+
+  model <- SuperLearner(y_show,
+                      x_show,
+                      family=binomial(),
+                      SL.library=list("SL.glm", 
+                                      "SL.nnet", 
+                                      "SL.ksvm",
+                                      "SL.knn")
+                      )
+  predictions_train <- predict.SuperLearner(model, newdata = x_show, X = x_show, Y = y_show)
+
+  conv.preds_show <- (ifelse(predictions_train$pred>=0.5,1,0))
+
+  # Create the confusion matrix
+  cm <- confusionMatrix(as.factor(conv.preds_show), as.factor(y_show))
+  
+  cross_validated_output[k,1] = cm$overall[[1]]
+
+  predictions_test <- predict.SuperLearner(model, 
+                                           newdata = x_final, 
+                                           X = x_show, 
+                                           Y = y_show, 
+                                           onlySL = F)
+
+  conv.preds_show <- (ifelse(predictions_test$pred>=0.5,1,0))
+
+  # Create the confusion matrix
+  cm <- confusionMatrix(as.factor(conv.preds_show),
+                        as.factor(y_final))
+  
+  cross_validated_output[k,2] = cm$overall[[1]]
+  
+  x_final <- as.data.frame(datagg[,c(3,5)])
+  y_final <- as.matrix(as.numeric(as.factor(datagg$Breakout))-1)
+
+  predictions_show <- predict.SuperLearner(model, newdata = x_final, X = x_show, Y = y_show, onlySL = F)
+
+  conv.preds_show <- (ifelse(predictions_show$pred>=0.5,1,0))
+
+  # Create the confusion matrix
+  cm <- confusionMatrix(as.factor(conv.preds_show), as.factor(y_final))
+  cross_validated_output[k,3] = cm$overall[[1]] 
+  
+  cross_validated_output[k,4] = k
+  j = j + 1000
+}
+```
+
+```{r}
+CV_data = data.frame(cross_validated_output) 
+colnames(CV_data) <-  c("Train", "Test", "Observed", "K")
+
+CV_data %>%
+  pivot_longer(Train:Observed, names_to = "Set", values_to = "Accuracy") %>% 
+  mutate(Set = factor(Set, c("Train", "Test", "Observed"))) %>% 
+  ggplot(aes(x = K, y = Accuracy, color = Set))+
+  geom_point()+
+  geom_line()+
+  theme_classic()+
+  theme(legend.position = "bottom")+
+  labs(color = "")+
+  scale_color_brewer(palette = "Dark2")+
+  scale_x_continuous(breaks = seq(0,10, 1))+
+  scale_y_continuous(limits = c(.9,1),breaks = seq(.9,1,.02))
+
+ggsave("CV_Results.jpeg", width = 5, height = 5)
+
+```
+
+
+```{r}
+## Bootstrapping ML for SEs
+set.seed(1)
+iterations = 1000
+
+variables = 4
+output <- matrix(ncol=variables, nrow=iterations)
+
+for(i in 1:iterations){
+  data <- dat_show_s %>% 
+    select(Breakout, Immersion, Frustration) %>% 
+    sample_n( size = 5000, replace = T)
+  x_final <- as.data.frame(data[,c(2,3)])
+  y_final <- as.matrix(as.numeric(as.factor(data$Breakout))-1)
+
+  predictions_show <- predict.SuperLearner(model, 
+                                           newdata = x_final, 
+                                           X = x_show, 
+                                           Y = y_show, 
+                                           onlySL = F)
+
+  conv.preds_show <- (ifelse(predictions_show$pred>=0.5,1,0))
+
+  # Create the confusion matrix
+  cm <- confusionMatrix(as.factor(conv.preds_show),
+                        as.factor(y_final))
+  output[i,1] <- cm$table[1]
+  output[i,2] <- cm$table[2]
+  output[i,3] <- cm$table[3]
+  output[i,4] <- cm$table[4]
+} 
+
+output <- data.frame(output)
+output <- output %>% 
+  mutate(neg = X1/(X1 + X2),
+         pos = X4/(X4 + X3),
+         model = "Baged ML") %>% 
+  select(neg,pos,model)
+
+
+```
+
+```{r}
+## Bootsrapping Logit
+set.seed(1)
+iterations = 1000
+
+variables = 4
+output2 <- matrix(ncol=variables, nrow=iterations)
+
+model <- glm(Breakout == 0 ~ Frustration + Immersion, dat_show_s , family = binomial)
+
+for(i in 1:iterations){
+  data <- dat_show_s %>% 
+    select(Breakout, Immersion, Frustration) %>% 
+    sample_n( size = 5000, replace = T)
+  x_final <- as.data.frame(data[,c(2,3)])
+  y_final <- as.matrix(as.numeric(as.factor(data$Breakout))-1)
+  
+
+  probabilities <- model %>% predict(x_final, type = "response")
+  predicted.classes <- ifelse(probabilities > 0.5, "0", "1")
+
+  cm <- confusionMatrix(as.factor(predicted.classes),
+                        as.factor(y_final))
+  output2[i,1] <- cm$table[1]
+  output2[i,2] <- cm$table[2]
+  output2[i,3] <- cm$table[3]
+  output2[i,4] <- cm$table[4]
+} 
+
+output2 <- data.frame(output2)
+output2 <- output2 %>% 
+  mutate(neg = X1/(X1 + X2),
+         pos = X4/(X4 + X3),
+         model = "Logistic") %>% 
+  select(neg,pos,model)
+
+model_comparison <- output %>% 
+  rbind(output2)
+
+model_comparison %>% 
+  group_by(model) %>% 
+  summarize(se_neg_bottom = mean(neg) - sd(neg), se_neg_top = mean(neg) + sd(neg), se_pos_bottom = mean(pos)- sd(pos), se_pos_top = mean(pos)+ sd(pos), pos = mean(pos), neg = mean(neg))
+
+```
+
+```{r}
+model_comparison %>% 
+  jmv::ttestIS(vars = neg, group = model, mann = T)
+model_comparison %>% 
+  jmv::ttestIS(vars = pos, group = model, mann = T)
+```
+
+```{r}
+# Comparing models graphically
+model_comparison %>%
+  rename(Flop = "neg",
+         Hit = "pos") %>% 
+  pivot_longer(Flop:Hit, 
+               names_to = "Breakout", 
+               values_to = "Accuracy") %>% 
+  group_by(model, Breakout) %>% 
+  mutate(Average = mean(Accuracy),
+         SE =  sd(Accuracy)) %>% 
+  ggplot(aes(x = model,
+             fill = Breakout, 
+             y = Average))+
+  geom_bar(stat = "identity",
+           position = "dodge")+
+  geom_text(aes(label = round(Average, 2),
+                y = Average + SE),
+            position = position_dodge(0.8), 
+            vjust = -1) +
+  geom_errorbar(aes(ymin = (Average -SE*2),
+                    ymax = (Average + SE*2)),
+                width=0.4, 
+                colour="black", 
+                width =.4,
+                alpha=0.9,
+                size=.9, 
+                position = position_dodge(0.8))+
+  scale_y_continuous(breaks = seq(0,1.1,by =.2))+
+  ylim(0,1.1)+
+  scale_fill_brewer(palette = "Dark2")+
+  theme_classic()+
+  theme(legend.position = "bottom")+
+  labs(fill = "", x="", y = "Accuracy")
+
+ggsave("model_comparions.jpeg", width = 5, height = 5)
+```
+
