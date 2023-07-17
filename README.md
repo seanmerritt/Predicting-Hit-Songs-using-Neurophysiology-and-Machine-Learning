@@ -2,4 +2,4 @@
 
 Identifying hit songs is notoriously difficult.  Traditionally, song elements have been measured from large databases to identify the lyrical aspects of hits.  We took a different approach, measuring neurophysiologic responses to a set of songs provided by a streaming music service that identified hits and flops.  A linear statistical model using two neural measures identified hits with 69% accuracy.  Then, we created a synthetic set data and applied ensemble machine learning to capture inherent nonlinearities in neural data.  This model classified hit songs with 97% accuracy.  Applying machine learning to the neural response to first minute of songs accurately classified hits 82% of the time showing that the brain rapidly identifies hit music.  Our results demonstrate that applying machine learning to neural data can substantially increase classification accuracy.   
 
-**The full paper is under review. No pre-print is currently available.**
+This paper was accepted in _Frontiers of Artificial Intelligence_. Can be found here: https://www.frontiersin.org/articles/10.3389/frai.2023.1154663/full
